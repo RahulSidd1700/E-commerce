@@ -27,8 +27,6 @@ class ProductCreateView(mixins.CreateModelMixin,
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
 
-   
-
 @login_required
 @never_cache
 def home(request):
