@@ -5,11 +5,7 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = '__all__'
-    # def create(self, validated_data):
-    #     password = validated_data["passowrd"]
-    #     hashPass = "hashedpassword"
-    #     validated_data["password"] = hashPass
-    #     return Product.objects.create(validated_data)
+    
 class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem

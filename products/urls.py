@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -15,11 +17,8 @@ urlpatterns = [
     path('api/products/', views.api_product_list),
     path('api/add-product/', views.ProductCreateView.as_view()),
     path('order-history/', views.order_history, name='order_history'),
-   
-]
-urlpatterns += [
     path('admin/products/', views.admin_products, name='admin_products'),
     path('admin/products/add/', views.add_product, name='add_product'),
     path('admin/products/edit/<int:pk>/', views.edit_product, name='edit_product'),
     path('admin/products/delete/<int:pk>/', views.delete_product, name='delete_product'),
-]
+]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
