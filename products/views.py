@@ -1,8 +1,8 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import generics, mixins, status
+from rest_framework import generics, mixins
 from .models import Product, CartItem, Order, OrderItem
-from .serializers import OrderSerializer, ProductSerializer, CartItemSerializer
+from .serializers import ProductSerializer
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from .forms import SignUpForm, ProductForm, AddToCartForm
@@ -11,10 +11,9 @@ from django.contrib import messages
 from django.views.decorators.cache import never_cache
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import F
-from django.contrib.admin.views.decorators import staff_member_required
 
-
-
+def home(request):
+    return render(request, 'home.html')
 
 @api_view(['GET'])
 def api_product_list(request):
@@ -27,10 +26,12 @@ class ProductCreateView(mixins.CreateModelMixin,
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
 
+    def post(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
 
 @login_required
 @never_cache
-def home(request):
+def products(request):
     product_list = Product.objects.all().order_by('name')
     paginator = Paginator(product_list, 6)
 
@@ -42,7 +43,7 @@ def home(request):
     except EmptyPage:
         products = paginator.page(paginator.num_pages)
 
-    return render(request, 'home.html', {'products': products})
+    return render(request, 'products.html', {'products': products})
 
 @login_required
 @never_cache
@@ -71,10 +72,9 @@ def product_detail(request, pk):
 
             cart_item.save()
             messages.success(request, f"{quantity} x {product.name} added to cart!")
-            return redirect('home')
+            return redirect('products')
     
     return render(request, 'product_detail.html', {'product': product, 'add_to_cart_form': add_to_cart_form})
-
 
 @login_required
 @never_cache
@@ -83,19 +83,18 @@ def add_to_cart(request, pk):
     
     if product.stock < 1:
         messages.error(request, f"Sorry, {product.name} is out of stock.")
-        return redirect('home')
+        return redirect('products')
 
     item, created = CartItem.objects.get_or_create(user=request.user, product=product)
 
     if not created:
         if product.stock < item.quantity + 1:
             messages.error(request, f"Cannot add more {product.name}. Only {product.stock} available in total.")
-            return redirect('home')
+            return redirect('products')
         item.quantity = F('quantity') + 1
     item.save()
     messages.success(request, f"{product.name} added to cart!")
-    return redirect('home')
-
+    return redirect('products')
 
 @login_required
 @never_cache
@@ -121,11 +120,10 @@ def update_cart_item(request, pk):
                 
                 item.quantity = new_quantity
                 item.save()
-                messages.success(f"Quantity for {item.product.name} updated to {new_quantity}.")
+                messages.success(request, f"Quantity for {item.product.name} updated to {new_quantity}.")
         except (ValueError, TypeError):
             messages.error(request, "Invalid quantity.")
     return redirect('cart')
-
 
 @login_required
 @never_cache
@@ -141,7 +139,7 @@ def checkout(request):
     cart_items = CartItem.objects.filter(user=request.user)
     if not cart_items.exists():
         messages.warning(request, "Your cart is empty.")
-        return redirect('home')
+        return redirect('products')
 
     order = Order.objects.create(user=request.user)
     total_order_price = 0
@@ -173,25 +171,16 @@ def checkout(request):
     messages.success(request, f"Checkout successful! Your order (ID: {order.id}) has been placed for ${order.total_price:.2f}.")
     return redirect('order_history')
 
-
 def signup_view(request):
     if request.method == 'POST':
         form = SignUpForm(request.POST)
         if form.is_valid():
             user = form.save()
-            from django.contrib.auth.backends import ModelBackend
-            backend = ModelBackend.__module__ + '.' + ModelBackend.__qualname__
-
-            login(request, user, backend=backend) # Pass the backend here
-            messages.success(request, "Account created successfully! Welcome!")
-            return redirect('home')
-        else:
-            pass
+            messages.success(request, "Account created successfully! Please log in.")
+            return redirect('login')
     else:
         form = SignUpForm()
     return render(request, 'signup.html', {'form': form})
-
-
 
 @never_cache
 def login_view(request):
@@ -214,25 +203,41 @@ def logout_view(request):
     messages.info(request, "You have been logged out.")
     return redirect('login')
 
-
-@staff_member_required
+@login_required
 def admin_products(request):
-    products = Product.objects.all().order_by('name')
+    """
+    Displays a list of products for the logged-in user to manage.
+    """
+    products = Product.objects.filter(seller=request.user).order_by('name')
     return render(request, 'admin_products.html', {'products': products})
 
-
-@staff_member_required
+@login_required
 def add_product(request):
+    """
+    Allows a user to add a new product.
+    The new product will be associated with the current user.
+    """
     form = ProductForm(request.POST or None, request.FILES or None)
     if form.is_valid():
-        form.save()
+        new_product = form.save(commit=False)
+        new_product.seller = request.user
+        new_product.save()
         messages.success(request, "Product added successfully!")
         return redirect('admin_products')
     return render(request, 'product_form.html', {'form': form, 'title': 'Add Product'})
 
-@staff_member_required
+@login_required
 def edit_product(request, pk):
+    """
+    Allows a user to edit one of their products.
+    Includes a security check to prevent editing products owned by others.
+    """
     product = get_object_or_404(Product, pk=pk)
+    
+    if product.seller != request.user:
+        messages.error(request, "You do not have permission to edit this product.")
+        return redirect('admin_products')
+
     form = ProductForm(request.POST or None, request.FILES or None, instance=product)
     if form.is_valid():
         form.save()
@@ -240,9 +245,18 @@ def edit_product(request, pk):
         return redirect('admin_products')
     return render(request, 'product_form.html', {'form': form, 'title': 'Edit Product'})
 
-@staff_member_required
+@login_required
 def delete_product(request, pk):
+    """
+    Allows a user to delete one of their products.
+    Includes a security check to prevent deleting products owned by others.
+    """
     product = get_object_or_404(Product, pk=pk)
+    
+    if product.seller != request.user:
+        messages.error(request, "You do not have permission to delete this product.")
+        return redirect('admin_products')
+
     if request.method == 'POST':
         product_name = product.name
         product.delete()
@@ -250,15 +264,7 @@ def delete_product(request, pk):
         return redirect('admin_products')
     return render(request, 'confirm_delete.html', {'object': product})
 
-
-
 @login_required
 def order_history(request):
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
     return render(request, 'order_history.html', {'orders': orders})
-
-
-
-
-    def post(self, request, *args, **kwargs):
-        return self.create(request, *args, **kwargs)
