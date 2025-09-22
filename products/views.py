@@ -2,10 +2,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import generics, mixins
 from .models import Product, CartItem, Order, OrderItem
-from .serializers import ProductSerializer
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
-from .forms import SignUpForm, ProductForm, AddToCartForm
+from .forms import SignUpForm, ProductForm, AddToCartForm, ShippingAddressForm, PaymentMethodForm
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.decorators.cache import never_cache
@@ -14,20 +13,6 @@ from django.db.models import F
 
 def home(request):
     return render(request, 'home.html')
-
-@api_view(['GET'])
-def api_product_list(request):
-    products = Product.objects.all()
-    serializer = ProductSerializer(products, many=True)
-    return Response(serializer.data)
-
-class ProductCreateView(mixins.CreateModelMixin,
-                        generics.GenericAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-
-    def post(self, request, *args, **kwargs):
-        return self.create(request, *args, **kwargs)
 
 @login_required
 @never_cache
@@ -135,41 +120,104 @@ def remove_from_cart(request, pk):
 
 @login_required
 @never_cache
-def checkout(request):
+def checkout_details(request):
     cart_items = CartItem.objects.filter(user=request.user)
     if not cart_items.exists():
         messages.warning(request, "Your cart is empty.")
         return redirect('products')
 
-    order = Order.objects.create(user=request.user)
-    total_order_price = 0
+    if request.method == 'POST':
+        address_form = ShippingAddressForm(request.POST)
+        payment_form = PaymentMethodForm(request.POST)
 
-    for item in cart_items:
-        product = item.product
-        if product.stock < item.quantity:
-            messages.error(request, f"Not enough stock for {product.name}. Only {product.stock} available. Please adjust your cart.")
-            order.delete()
-            return redirect('cart')
-        
-        OrderItem.objects.create(
-            order=order,
-            product=item.product,
-            quantity=item.quantity,
-            price_at_purchase=item.product.price
+        if address_form.is_valid() and payment_form.is_valid():
+           
+            request.session['shipping_data'] = address_form.cleaned_data
+            request.session['payment_data'] = payment_form.cleaned_data
+            return redirect('checkout_summary')
+    else:
+       
+        initial_address_data = request.session.get('shipping_data', {})
+        initial_payment_data = request.session.get('payment_data', {})
+        address_form = ShippingAddressForm(initial=initial_address_data)
+        payment_form = PaymentMethodForm(initial=initial_payment_data)
+
+    context = {
+        'address_form': address_form,
+        'payment_form': payment_form,
+        'items': cart_items
+    }
+    return render(request, 'checkout_details.html', context)
+
+@login_required
+@never_cache
+def checkout_summary(request):
+    shipping_data = request.session.get('shipping_data')
+    payment_data = request.session.get('payment_data')
+
+    if not shipping_data or not payment_data:
+        messages.error(request, "Please enter your shipping and payment details first.")
+        return redirect('checkout_details')
+
+    cart_items = CartItem.objects.filter(user=request.user)
+    if not cart_items.exists():
+        messages.warning(request, "Your cart is empty.")
+        return redirect('products')
+    
+    # Calculate the total price based on cart items
+    total_order_price = sum(item.total_price() for item in cart_items)
+    
+    if request.method == 'POST':
+        # This is the final step, process the order
+        # Ensure sufficient stock for all items before creating the order
+        for item in cart_items:
+            product = item.product
+            if product.stock < item.quantity:
+                messages.error(request, f"Not enough stock for {product.name}. Only {product.stock} available. Please adjust your cart.")
+                return redirect('cart')
+
+        # Create the Order object using all shipping details from the session
+        order = Order.objects.create(
+            user=request.user,
+            shipping_address=f"{shipping_data.get('address_line_1')}, {shipping_data.get('address_line_2', '')}",
+            shipping_city=shipping_data.get('city'),
+            shipping_state=shipping_data.get('state'),
+            shipping_postal_code=shipping_data.get('postal_code'),
+            shipping_country=shipping_data.get('country'),
+            payment_method=payment_data.get('payment_method'),
+            total_price=total_order_price
         )
+
+        # Create OrderItems and decrement stock
+        for item in cart_items:
+            product = item.product
+            OrderItem.objects.create(
+                order=order,
+                product=item.product,
+                quantity=item.quantity,
+                price_at_purchase=item.product.price
+            )
+            
+            
+            product.stock = F('stock') - item.quantity
+            product.save(update_fields=['stock'])
+
         
-        product.stock = F('stock') - item.quantity
-        product.save()
+        cart_items.delete()
+        del request.session['shipping_data']
+        del request.session['payment_data']
 
-        total_order_price += item.total_price()
+        messages.success(request, f"Checkout successful! Your order (ID: {order.id}) has been placed for ${order.total_price:.2f}.")
+        return redirect('order_history')
 
-    order.total_price = total_order_price
-    order.save()
+    context = {
+        'items': cart_items,
+        'shipping_data': shipping_data,
+        'payment_data': payment_data,
+        'total_order_price': total_order_price,
+    }
+    return render(request, 'checkout_summary.html', context)
 
-    cart_items.delete()
-
-    messages.success(request, f"Checkout successful! Your order (ID: {order.id}) has been placed for ${order.total_price:.2f}.")
-    return redirect('order_history')
 
 def signup_view(request):
     if request.method == 'POST':
@@ -205,22 +253,17 @@ def logout_view(request):
 
 @login_required
 def admin_products(request):
-    """
-    Displays a list of products for the logged-in user to manage.
-    """
-    products = Product.objects.filter(seller=request.user).order_by('name')
+    
+    products = Product.objects.filter(user=request.user).order_by('name')
     return render(request, 'admin_products.html', {'products': products})
 
 @login_required
 def add_product(request):
-    """
-    Allows a user to add a new product.
-    The new product will be associated with the current user.
-    """
+    
     form = ProductForm(request.POST or None, request.FILES or None)
     if form.is_valid():
         new_product = form.save(commit=False)
-        new_product.seller = request.user
+        new_product.user = request.user
         new_product.save()
         messages.success(request, "Product added successfully!")
         return redirect('admin_products')
@@ -228,13 +271,10 @@ def add_product(request):
 
 @login_required
 def edit_product(request, pk):
-    """
-    Allows a user to edit one of their products.
-    Includes a security check to prevent editing products owned by others.
-    """
+   
     product = get_object_or_404(Product, pk=pk)
     
-    if product.seller != request.user:
+    if product.user != request.user:
         messages.error(request, "You do not have permission to edit this product.")
         return redirect('admin_products')
 
@@ -247,13 +287,9 @@ def edit_product(request, pk):
 
 @login_required
 def delete_product(request, pk):
-    """
-    Allows a user to delete one of their products.
-    Includes a security check to prevent deleting products owned by others.
-    """
     product = get_object_or_404(Product, pk=pk)
     
-    if product.seller != request.user:
+    if product.user != request.user:
         messages.error(request, "You do not have permission to delete this product.")
         return redirect('admin_products')
 
@@ -268,3 +304,7 @@ def delete_product(request, pk):
 def order_history(request):
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
     return render(request, 'order_history.html', {'orders': orders})
+
+@login_required
+def profile_view(request):
+    return render(request, 'profile.html')

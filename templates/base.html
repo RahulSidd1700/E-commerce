@@ -36,9 +36,11 @@
             <ul class="navbar-nav ms-auto">
                 {% if user.is_authenticated %}
                     <li class="nav-item d-flex align-items-center me-2">
-                        <span class="badge text-bg-secondary p-2">
-                            Hello, <strong>{{ user.username }}</strong>
-                        </span>
+                        <a class="nav-link p-0" href="{% url 'profile' %}">
+                            <span class="badge text-bg-secondary p-2">
+                                Hello, <strong>{{ user.username }}</strong>
+                            </span>
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'home' %}">

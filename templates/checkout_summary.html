@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Order Summary{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card shadow-lg p-4">
+                <h1 class="card-title text-center mb-4">Checkout Summary</h1>
+                <hr>
+
+                <div class="mb-4">
+                    <h2 class="h4 mb-3">Your Order</h2>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Product</th>
+                                    <th class="text-center">Qty</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                <tr>
+                                    <td>{{ item.product.name }}</td>
+                                    <td class="text-center">{{ item.quantity }}</td>
+                                    <td class="text-end">${{ item.product.price|floatformat:2 }}</td>
+                                    <td class="text-end fw-bold">${{ item.total_price|floatformat:2 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <div class="text-end">
+                            <p class="mb-1">Subtotal: <span class="fw-bold">${{ total_order_price|floatformat:2 }}</span></p>
+                            <p class="mb-1">Shipping: <span class="fw-bold">$0.00</span></p>
+                            <hr class="my-1">
+                            <p class="fs-5 mt-2 mb-0"><strong>Grand Total: ${{ total_order_price|floatformat:2 }}</strong></p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-4">
+                    <h2 class="h4 mb-3">Shipping Information</h2>
+                    <div class="card p-3 bg-light">
+                        <p class="mb-1"><strong>Name:</strong> {{ shipping_data.full_name }}</p>
+                        <p class="mb-1"><strong>Address:</strong> {{ shipping_data.address_line_1 }}{% if shipping_data.address_line_2 %}, {{ shipping_data.address_line_2 }}{% endif %}</p>
+                        <p class="mb-1"><strong>City, State:</strong> {{ shipping_data.city }}, {{ shipping_data.state }}</p>
+                        <p class="mb-1"><strong>Postal Code:</strong> {{ shipping_data.postal_code }}</p>
+                        <p class="mb-1"><strong>Country:</strong> {{ shipping_data.country }}</p>
+                    </div>
+                </div>
+
+                <hr>
+
+                <form method="post" action="{% url 'checkout_summary' %}" class="d-grid gap-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary btn-lg">Confirm & Pay</button>
+                    <a href="{% url 'checkout_details' %}" class="btn btn-outline-secondary btn-lg">Go Back and Edit</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

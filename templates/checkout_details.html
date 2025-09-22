@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Checkout Details{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card shadow-lg p-4">
+                <h2 class="card-title text-center mb-4">Checkout</h2>
+                <hr>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-5">
+                        <h4 class="mb-3">Shipping Address</h4>
+                        {% for field in address_form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}
+                            <div class="text-danger">
+                                {% for error in field.errors %}
+                                <p>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-4">
+                        <h4 class="mb-3">Payment Method</h4>
+                        <div class="card p-3 bg-dark text-white">
+                            {% for radio in payment_form.payment_method %}
+                            <div class="form-check mb-2">
+                                {{ radio.tag }}
+                                <label class="form-check-label" for="{{ radio.id_for_label }}">
+                                    {{ radio.choice_label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                            {% if payment_form.payment_method.errors %}
+                            <div class="text-danger mt-2">
+                                {% for error in payment_form.payment_method.errors %}
+                                <p>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Continue to Order Summary</button>
+                        <a href="{% url 'cart' %}" class="btn btn-outline-secondary btn-lg">Back to Cart</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

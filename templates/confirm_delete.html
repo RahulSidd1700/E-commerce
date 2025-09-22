@@ -1,10 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Confirm Delete{% endblock %}
 {% block content %}
-<h2>Are you sure you want to delete "{{ object.name }}"?</h2>
-<form method="post">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-danger">Yes, Delete</button>
-    <a href="{% url 'admin_products' %}" class="btn btn-secondary">Cancel</a>
-</form>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-lg p-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-exclamation-triangle-fill text-danger mb-3" style="font-size: 3rem;"></i>
+                    <h2 class="card-title text-danger mb-3">Confirm Deletion</h2>
+                    <p class="card-text fs-5">Are you sure you want to delete <strong class="text-dark">"{{ object.name }}"</strong>?</p>
+                    <hr class="my-4">
+                    <form method="post" class="d-grid gap-2">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-lg">
+                            <i class="bi bi-trash-fill me-2"></i> Yes, Delete
+                        </button>
+                        <a href="{% url 'admin_products' %}" class="btn btn-secondary btn-lg">
+                            <i class="bi bi-x-circle-fill me-2"></i> Cancel
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
